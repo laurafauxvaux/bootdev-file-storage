@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
@@ -117,4 +119,42 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 	}
 
 	respondWithJSON(w, http.StatusOK, videos)
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+
+	type FFProbeOutput struct {
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+		} `json:"streams"`
+	}
+
+	videoRatio := FFProbeOutput{}
+
+	if err := json.Unmarshal(buf.Bytes(), &videoRatio); err != nil {
+		return "", err
+	}
+
+	for _, stream := range videoRatio.Streams {
+		if stream.CodecType == "video" {
+			if stream.Width*9/stream.Height == 16 {
+				return "16:9", nil
+			} else if stream.Width*16/stream.Height == 9 {
+				return "9:16", nil
+			} else {
+				return "other", nil
+			}
+		}
+	}
+	return "", nil
 }

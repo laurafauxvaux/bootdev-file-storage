@@ -79,15 +79,30 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Unable to read the file from the beginning", err)
-		return
-	}
-
 	fileKey32 := make([]byte, 32)
 	rand.Read(fileKey32)
 	keyString := hex.EncodeToString(fileKey32)
 	fileName := fmt.Sprintf("%s.mp4", keyString)
+
+	videoRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to determine video aspect ratio", err)
+		return
+	}
+
+	switch videoRatio {
+	case "16:9":
+		fileName = "landscape/" + fileName
+	case "9:16":
+		fileName = "portrait/" + fileName
+	case "other":
+		fileName = "other/" + fileName
+	}
+
+	if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to read the file from the beginning", err)
+		return
+	}
 
 	if _, err := cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
