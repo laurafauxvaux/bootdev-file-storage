@@ -99,6 +99,21 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		fileName = "other/" + fileName
 	}
 
+	processedPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video path", err)
+		return
+	}
+
+	processedVideo, err := os.Open(processedPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video", err)
+		return
+	}
+
+	defer processedVideo.Close()
+	defer os.Remove(processedPath)
+
 	if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to read the file from the beginning", err)
 		return
@@ -107,7 +122,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	if _, err := cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &fileName,
-		Body:        tempFile,
+		Body:        processedVideo,
 		ContentType: &mediaType,
 	}); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to add objects to the bucket", err)
